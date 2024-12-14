@@ -1,0 +1,94 @@
+# 돈 주고 팔지마셈
+# 티켓로그 같은거 없음 넣고싶으면 쥐피티돌리던가 처 넣던가하셈
+
+import disnake
+from disnake.ext import commands
+
+intents = disnake.Intents.default()
+intents.messages = True
+intents.guilds = True
+intents.members = True
+intents.message_content = True
+
+bot = commands.InteractionBot(intents=intents)
+user_threads = {}
+thread_to_user = {}
+
+# 위에 있는게 서버아이디 밑에있는게 포럼 아이디 ㅇㅋ?
+server_id = 1
+forum_id = 1
+
+@bot.event
+async def on_ready():
+    print(f"서비스 시작")
+
+@bot.event
+async def on_message(message: disnake.Message):
+    if message.author.bot:
+        return
+
+    if message.guild is None:
+        user = message.author
+        if user.id not in user_threads:
+            guild = bot.get_guild(server_id)
+            if guild is None:
+                return
+            forum_channel = guild.get_channel(forum_id)
+            if forum_channel is None:
+                return
+
+            embed = disnake.Embed(title=user.display_name, description=message.content, color=0x2ecc71)
+            embed.set_thumbnail(url=user.display_avatar.url)
+
+            thread_with_message = await forum_channel.create_thread(
+                name=user.display_name,
+                embeds=[embed]
+            )
+            thread = thread_with_message.thread  # 실제 Thread 객체
+
+            user_threads[user.id] = thread
+            thread_to_user[thread.id] = user.id
+
+        else:
+            thread = user_threads[user.id]
+            embed = disnake.Embed(description=message.content, color=0x3498db)
+            embed.set_thumbnail(url=message.author.display_avatar.url)
+            await thread.send(embed=embed)
+
+        for emoji in ["🇺", "🇹", "🇴", "🇵", "🇮", "🅰"]:  # 이거 님 좆대로 바꾸면 됨 리스트라서 그냥 콤마 하고 더 늘릴 수 있음
+            await message.add_reaction(emoji)
+    else:
+        if message.channel.type == disnake.ChannelType.public_thread:
+            thread = message.channel
+            if thread.id in thread_to_user:
+                user_id = thread_to_user[thread.id]
+                user = await bot.fetch_user(user_id)
+                if user:
+                    embed = disnake.Embed(description=message.content, color=0xe67e22)
+                    await user.send(embed=embed)
+                    for emoji in ["✅"]:  # 이거 님 좆대로 바꾸면 됨 리스트라서 그냥 콤마 하고 더 늘릴 수 있음
+                        await message.add_reaction(emoji)
+
+@bot.slash_command(description="문의닫기")
+@commands.has_guild_permissions(administrator=True)
+async def 닫기(inter: disnake.ApplicationCommandInteraction):
+    if not isinstance(inter.channel, disnake.Thread):
+        await inter.response.send_message("티켓대화 포스트에서 해주세용", ephemeral=True)
+        return
+
+    thread = inter.channel
+    if thread.id in thread_to_user:
+        user_id = thread_to_user[thread.id]
+        if user_id in user_threads:
+            del user_threads[user_id]
+        del thread_to_user[thread.id]
+
+    try:
+        await thread.delete()
+        await inter.response.send_message("삭제완료", ephemeral=True)
+    except disnake.errors.NotFound:
+        await inter.response.send_message("뭐함?", ephemeral=True)
+    except disnake.errors.Forbidden:
+        await inter.response.send_message("니 못함 이거 ㅇㅇ", ephemeral=True)
+
+bot.run("")
